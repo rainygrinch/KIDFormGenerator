@@ -4,6 +4,8 @@ import pandas as pd
 import os
 from tkinter.ttk import Progressbar
 from docx import Document
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 class KIDGeneratorApp:
     def __init__(self, root):
@@ -16,13 +18,22 @@ class KIDGeneratorApp:
         self.data_file_button = tk.Button(self.root, text="Browse", command=self.select_data_file)
         self.data_file_button.pack(padx=10, pady=5, anchor='w')
 
+        self.data_file_label = tk.Label(self.root, text="", anchor="w", fg="blue")
+        self.data_file_label.pack(padx=10, pady=5, anchor='w')
+
         tk.Label(self.root, text="2. Select KID Template:").pack(anchor='w', padx=10)
         self.template_button = tk.Button(self.root, text="Browse", command=self.select_template_file)
         self.template_button.pack(padx=10, pady=5, anchor='w')
 
+        self.template_label = tk.Label(self.root, text="", anchor="w", fg="blue")
+        self.template_label.pack(padx=10, pady=5, anchor='w')
+
         tk.Label(self.root, text="3. Set Save Destination:").pack(anchor='w', padx=10)
         self.save_button = tk.Button(self.root, text="Browse", command=self.set_save_destination)
         self.save_button.pack(padx=10, pady=5, anchor='w')
+
+        self.save_label = tk.Label(self.root, text="", anchor="w", fg="blue")
+        self.save_label.pack(padx=10, pady=5, anchor='w')
 
         self.progress = Progressbar(self.root, orient="horizontal", length=300, mode="determinate")
         self.progress.pack(pady=10)
@@ -36,29 +47,41 @@ class KIDGeneratorApp:
 
     def select_data_file(self):
         self.data_file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-        self.check_ready_to_generate()
+        self.update_label(self.data_file_label, self.data_file_path)
 
     def select_template_file(self):
         self.template_file_path = filedialog.askopenfilename(filetypes=[("Word Documents", "*.docx")])
-        self.check_ready_to_generate()
+        self.update_label(self.template_label, self.template_file_path)
 
     def set_save_destination(self):
         self.save_directory = filedialog.askdirectory()
+        self.update_label(self.save_label, self.save_directory)
+
+    def update_label(self, label, path):
+        if path:
+            label.config(text=f"Selected: {path}", fg="green")  # Update the label to show the path and change the text color to green
+        else:
+            label.config(text="", fg="blue")  # Reset the label if no path is selected
         self.check_ready_to_generate()
 
     def check_ready_to_generate(self):
         if self.data_file_path and self.template_file_path and self.save_directory:
             self.generate_button.config(state=tk.NORMAL)
 
-
-
     def replace_placeholders(self, doc, replacements):
         # Replace placeholders in paragraphs
         for paragraph in doc.paragraphs:
             for placeholder, value in replacements.items():
                 if placeholder in paragraph.text:
+                    # Replace placeholder text
                     paragraph.text = paragraph.text.replace(placeholder, value)
 
+                    # Set font properties and alignment
+                    for run in paragraph.runs:
+                        run.font.name = 'Helvetica'
+                        run.font.size = Pt(10)  # Set font size to 10 pt
+                        run.font.color.rgb = RGBColor(0, 0, 0)  # Set font color to black
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center the paragraph
 
         # Replace placeholders in tables
         for table in doc.tables:
@@ -66,28 +89,42 @@ class KIDGeneratorApp:
                 for cell in row.cells:
                     for placeholder, value in replacements.items():
                         if placeholder in cell.text:
+                            # Replace placeholder text
                             cell.text = cell.text.replace(placeholder, value)
 
-    def calculate_ni(self, monthly_rate, ni_lower_threshold=758, ni_upper_threshold=1048, ni_rate_12=0.12,
-                     ni_rate_2=0.02):
+                            # Set font properties and alignment in the cell
+                            for paragraph in cell.paragraphs:
+                                for run in paragraph.runs:
+                                    run.font.name = 'Helvetica'
+                                    run.font.size = Pt(10)  # Set font size to 10 pt
+                                    run.font.color.rgb = RGBColor(0, 0, 0)  # Set font color to black
+                                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center the paragraph
+
+    def calculate_ni(self, monthly_rate, ni_lower_threshold=542, ni_primary_threshold=1048, ni_upper_threshold=4189,
+                     ni_rate_13=0.138, ni_rate_2=0.02):
         """
         Calculate NI contributions based on earnings above the threshold.
         :param monthly_rate: The gross monthly rate
         :param ni_lower_threshold: The lower earnings limit for the month
-        :param ni_upper_threshold: The upper earnings limit for the month
-        :param ni_rate_12: The 12% NI rate applied between thresholds
-        :param ni_rate_2: The 2% NI rate applied above the upper threshold
+        :param ni_primary_threshold: The primary threshold for employee contributions
+        :param ni_upper_threshold: The upper earnings limit for employee contributions
+        :param ni_rate_13: The 13.8% NI rate applied between the secondary and upper earnings limits
+        :param ni_rate_2: The 2% NI rate applied above the upper earnings limit
         :return: The calculated NI deduction
         """
-        # NI contribution calculation
         ni_deduction = 0.0
 
-        # Earnings between lower and upper threshold taxed at 12%
+        # Earnings between lower and primary threshold taxed at 13.8% (employer contribution)
         if monthly_rate > ni_lower_threshold:
-            ni_taxable = min(monthly_rate, ni_upper_threshold) - ni_lower_threshold
-            ni_deduction += ni_taxable * ni_rate_12
+            ni_taxable = min(monthly_rate, ni_primary_threshold) - ni_lower_threshold
+            ni_deduction += ni_taxable * ni_rate_13
 
-        # Earnings above upper threshold taxed at 2%
+        # Earnings between primary and upper threshold taxed at 13.8% (employee contribution)
+        if monthly_rate > ni_primary_threshold:
+            ni_taxable = min(monthly_rate, ni_upper_threshold) - ni_primary_threshold
+            ni_deduction += ni_taxable * ni_rate_13
+
+        # Earnings above the upper threshold taxed at 2% (employee contribution)
         if monthly_rate > ni_upper_threshold:
             ni_taxable = monthly_rate - ni_upper_threshold
             ni_deduction += ni_taxable * ni_rate_2
@@ -106,10 +143,10 @@ class KIDGeneratorApp:
         # Set default thresholds and rates if not provided
         if tax_thresholds is None:
             tax_thresholds = {
-                "personal_allowance": 12570,  # Personal allowance in GBP
-                "basic_rate": 50270,  # Basic rate threshold
-                "higher_rate": 150000,  # Higher rate threshold
-                "additional_rate": 150000  # Additional rate threshold
+                "personal_allowance": 12570,  # Personal allowance in GBP (annually)
+                "basic_rate": 37700,  # Basic rate threshold (annually)
+                "higher_rate": 125140,  # Higher rate threshold (annually)
+                "additional_rate": 125140  # Additional rate threshold (annually)
             }
         if tax_rates is None:
             tax_rates = {
@@ -120,27 +157,45 @@ class KIDGeneratorApp:
             }
 
         monthly_rate = daily_rate * working_days  # Calculate monthly earnings
+        annual_income = monthly_rate * 12  # Convert to annual income
+        print(f"Monthly Rate: {monthly_rate}")
+        print(f"Annual Income: {annual_income}")  # Debugging the annual income
 
         # Initialize tax deduction
         tax_deduction = 0.0
 
-        # Calculate tax for personal allowance portion
-        if monthly_rate <= tax_thresholds["personal_allowance"]:
+        # Apply tax bands based on annual income
+        if annual_income <= tax_thresholds["personal_allowance"]:
+            print(f"Annual income within personal allowance, no tax.")  # Debug
             tax_deduction = 0  # No tax for income within personal allowance
         else:
-            # Income above personal allowance, taxed at basic rate
-            taxable_income = monthly_rate - tax_thresholds["personal_allowance"]
-            if taxable_income <= (tax_thresholds["basic_rate"] - tax_thresholds["personal_allowance"]):
+            taxable_income = annual_income - tax_thresholds["personal_allowance"]
+            print(f"Taxable Income: {taxable_income}")  # Debug
+
+            # Calculate tax progressively based on the thresholds and rates
+            if taxable_income <= tax_thresholds["basic_rate"]:
                 tax_deduction = taxable_income * tax_rates["basic_rate"]
             else:
-                # Income above basic rate but below higher rate
-                taxable_income = min(taxable_income, tax_thresholds["higher_rate"] - tax_thresholds["basic_rate"])
-                tax_deduction += taxable_income * tax_rates["higher_rate"]
-                # Income above higher rate but below additional rate
-                taxable_income = min(taxable_income, monthly_rate - tax_thresholds["higher_rate"])
-                tax_deduction += taxable_income * tax_rates["additional_rate"]
+                # Income between personal allowance and basic rate threshold
+                tax_deduction = (tax_thresholds["basic_rate"] - tax_thresholds["personal_allowance"]) * tax_rates[
+                    "basic_rate"]
 
-        return tax_deduction
+                # Income between basic rate and higher rate threshold
+                if taxable_income <= tax_thresholds["higher_rate"]:
+                    tax_deduction += (taxable_income - tax_thresholds["basic_rate"]) * tax_rates["higher_rate"]
+                else:
+                    # Income between higher rate and additional rate threshold
+                    tax_deduction += (tax_thresholds["higher_rate"] - tax_thresholds["basic_rate"]) * tax_rates[
+                        "higher_rate"]
+
+                    # Income above the higher rate threshold
+                    tax_deduction += (taxable_income - tax_thresholds["higher_rate"]) * tax_rates["additional_rate"]
+
+        # Calculate monthly tax deduction based on the annual deduction
+        monthly_tax_deduction = tax_deduction / 12  # Divide by 12 to get monthly tax
+        print(f"Monthly Tax Deduction: {monthly_tax_deduction}")  # Debug
+
+        return monthly_tax_deduction
 
     def calculate_pension_contribution(self, daily_rate, working_days, avg_day_pension_percent=0.04281):
         """
@@ -178,18 +233,26 @@ class KIDGeneratorApp:
         employer_pension_contribution = qualifying_earnings * employer_pension_rate
         return employer_pension_contribution
 
+
+
     def generate_documents(self):
         global working_days
         working_days = 20
         umbrella_fee = 20.00  # Default umbrella fee
-        data = pd.read_csv(self.data_file_path)
+
+        # Read the CSV file and skip the second row
+        data = pd.read_csv(self.data_file_path, skiprows=[1])
         total_rows = len(data)
         successful_generations = 0
 
+
         for index, row in data.iterrows():
+            # Skip Row 2
+            # (No need for manual check here since it's already handled by skiprows)
+
             # Retrieve data from the row
             cand_full_name = row.get("Candidate", "")
-            assignment_id = row.get("ID", "") # Assuming 'AssignmentID' ex ists
+            assignment_id = row.get("ID", "")  # Assuming 'AssignmentID' exists
             contract_start_date = row.get("Start Date", "")
             contract_end_date = row.get("End Date", "")
             daily_rate = float(row.get("Pay Rate", 0.0))
@@ -199,7 +262,6 @@ class KIDGeneratorApp:
 
             if pay_freq.lower() == "per month":
                 daily_rate = daily_rate / working_days
-
 
             if not all([cand_full_name, assignment_id, contract_start_date, contract_end_date]):
                 print(f"Skipping row {index + 1} due to missing data")
@@ -211,13 +273,15 @@ class KIDGeneratorApp:
             monthly_rate = daily_rate * working_days  # Monthly rate calculated from daily rate
 
             # Deductions based on daily rate
-
             month_nic_deduction = self.calculate_ni(monthly_rate)
             month_tax_deduction = self.calculate_tax(daily_rate, working_days)
             month_pension_contribution = self.calculate_pension_contribution(daily_rate, working_days)
 
             # Total deductions for the month
-            total_deductions = month_tax_deduction + month_nic_deduction + month_pension_contribution + (umbrella_fee * 4)
+            total_deductions = month_tax_deduction + month_nic_deduction + month_pension_contribution + (
+                    umbrella_fee * 4)
+
+
 
             # Net pay calculation based on monthly rate
             net_pay = monthly_rate - total_deductions
@@ -230,6 +294,9 @@ class KIDGeneratorApp:
             # Employer's NIC and Pension calculations
             employer_ni_deduction = self.calculate_employer_ni(monthly_rate)
             employer_pension_contribution = self.calculate_employer_pension(monthly_rate)
+
+            # Example rate of pay to you (contractor)
+            eg_monthly_rate_to_contractor = monthly_rate - employer_ni_deduction - employer_pension_contribution - apprenticeship_levy
 
             doc = Document(self.template_file_path)
 
@@ -255,13 +322,13 @@ class KIDGeneratorApp:
                 "{WorkDays}": f"{working_days}",
                 "{EmployerNIC}": f"£{employer_ni_deduction:.2f}",
                 "{EmployerPension}": f"£{employer_pension_contribution:.2f}",
-
+                "{EgPayToContractor}": f"£{eg_monthly_rate_to_contractor:.2f}"
             }
 
             # Replace placeholders
             self.replace_placeholders(doc, replacements)
 
-            #Replace / with - in file name
+            # Replace / with - in file name
             contract_start_date = contract_start_date.replace("/", "-")
             contract_end_date = contract_end_date.replace("/", "-")
 
@@ -281,7 +348,10 @@ class KIDGeneratorApp:
             self.root.update_idletasks()
 
         messagebox.showinfo("Generation Complete",
-                            f"Successfully generated {successful_generations} of {total_rows} documents.")
+                            f"Successfully generated {successful_generations} of {total_rows} documents.\n"
+                            f"Thank you for using this Kid Form Generator\n"
+                            f"Kid Form Generator v1.5 - created by Peter Grint - Feb 2025")
+
 
 if __name__ == "__main__":
     root = tk.Tk()

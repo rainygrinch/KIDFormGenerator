@@ -1,0 +1,5 @@
+﻿ID,Candidate,Start Date,End Date,Pay Rate,Pay Unit,Pay Currency,Vacancy,Project Name,Umbrella Company
+id,candidate,dateBegin,dateEnd,payRate,salaryUnit,correlatedCustomText1,jobOrder,customText56,vendorClientCorporation
+14547,Joe Bloggs,03/02/2025,28/02/2025,160,Per Day,GBP,Designer,Designer,Sapphire DNP Limited
+6515,Happy Feet,03/02/2025,28/02/2025,11000,Per Month,GBP,Designer,Designer,Sapphire DNP Limited
+5619681,Tarzan of Jungle,03/02/2025,28/02/2025,350,Per Day,GBP,Business Analyst,NDC Business Analysis ,Liquid Friday Limited 
